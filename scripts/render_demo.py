@@ -22,7 +22,14 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.drawing import FEATURE_GROUPS, draw_blendshapes_overlay, draw_face_landmarks
+from src.drawing import (
+    FEATURE_GROUPS,
+    draw_blendshapes_overlay,
+    draw_face_landmarks,
+    draw_head_pose_axes,
+    draw_metrics_panel,
+)
+from src.metrics import head_pose_axes_2d, head_pose_from_matrix
 
 
 @dataclass
@@ -69,6 +76,22 @@ def main() -> int:
         _Cat(0.05, "jawOpen"),
     ]
     draw_blendshapes_overlay(canvas, fake_blendshapes)
+
+    # v0.2: head-pose gizmo (synthetic yaw/pitch) + metrics panel.
+    import math
+    yaw, pitch = math.radians(-25), math.radians(10)
+    Ry = np.array([[math.cos(yaw), 0, math.sin(yaw)], [0, 1, 0],
+                   [-math.sin(yaw), 0, math.cos(yaw)]])
+    Rx = np.array([[1, 0, 0], [0, math.cos(pitch), -math.sin(pitch)],
+                   [0, math.sin(pitch), math.cos(pitch)]])
+    M = np.eye(4)
+    M[:3, :3] = Ry @ Rx
+    p, y, r = head_pose_from_matrix(M)
+    draw_head_pose_axes(canvas, (300, 300), head_pose_axes_2d(M, length=80))
+    draw_metrics_panel(canvas, [
+        "EAR  0.29 (open)", "Blinks  3",
+        f"Pitch {p:+5.1f}", f"Yaw   {y:+5.1f}", f"Roll  {r:+5.1f}",
+    ])
 
     out = Path(__file__).resolve().parent.parent / "render_demo.png"
     cv2.imwrite(str(out), canvas)

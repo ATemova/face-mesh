@@ -131,3 +131,46 @@ def draw_blendshapes_overlay(image, blendshapes, top_n: int = 5) -> None:
         cv2.rectangle(image, (bx, y - 9), (bx + bar_w, y - 1), (60, 60, 60), -1)
         fill = int(bar_w * min(max(cat.score, 0.0), 1.0))
         cv2.rectangle(image, (bx, y - 9), (bx + fill, y - 1), (0, 200, 255), -1)
+
+
+def draw_head_pose_axes(image, origin_xy, axis_offsets, *, thickness: int = 2) -> None:
+    """Draw a 3D orientation gizmo (X red, Y green, Z blue) at ``origin_xy``.
+
+    Args:
+        image: BGR frame (modified in place).
+        origin_xy: ``(x, y)`` pixel anchor — typically the nose tip.
+        axis_offsets: three ``(dx, dy)`` screen offsets from
+            :func:`metrics.head_pose_axes_2d`, in X, Y, Z order.
+    """
+    ox, oy = int(origin_xy[0]), int(origin_xy[1])
+    colors = ((0, 0, 255), (0, 255, 0), (255, 60, 60))  # X, Y, Z in BGR
+    for (dx, dy), color in zip(axis_offsets, colors):
+        cv2.line(image, (ox, oy), (ox + dx, oy + dy), color, thickness, cv2.LINE_AA)
+    cv2.circle(image, (ox, oy), 3, (255, 255, 255), -1, cv2.LINE_AA)
+
+
+def draw_metrics_panel(image, lines, *, anchor: str = "br") -> None:
+    """Render a small translucent text panel of metric lines.
+
+    Args:
+        image: BGR frame (modified in place).
+        lines: list of short strings to display, one per row.
+        anchor: ``"br"`` (bottom-right) or ``"tr"`` (top-right).
+    """
+    if not lines:
+        return
+    h, w = image.shape[:2]
+    pad, line_h = 8, 20
+    panel_w = 200
+    panel_h = pad * 2 + line_h * len(lines)
+    x1 = w - panel_w - 10
+    y1 = 10 if anchor == "tr" else h - panel_h - 10
+
+    overlay = image.copy()
+    cv2.rectangle(overlay, (x1, y1), (x1 + panel_w, y1 + panel_h), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.55, image, 0.45, 0, image)
+
+    for i, text in enumerate(lines):
+        y = y1 + pad + i * line_h + 13
+        cv2.putText(image, text, (x1 + pad, y), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.45, (60, 255, 120), 1, cv2.LINE_AA)

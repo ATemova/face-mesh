@@ -5,17 +5,18 @@ Examples
     # Webcam (default device 0), live window
     python main.py
 
+    # Head-pose gizmo + blink counter on the webcam
+    python main.py --head-pose --blink
+
     # A single image, written next to the input as *_mesh.jpg
     python main.py --source photo.jpg
 
-    # A video file, rendered to an output file
-    python main.py --source clip.mp4 --output clip_mesh.mp4
-
-    # Show expression blendshapes, track up to 2 faces
-    python main.py --blendshapes --num-faces 2
+    # A video file, rendered out + metrics exported per frame
+    python main.py --source clip.mp4 --output clip_mesh.mp4 \
+        --head-pose --blink --export metrics.jsonl
 
 Interactive keys (windowed mode): q/ESC quit · s snapshot · m toggle mesh
-· f cycle features · p toggle points · b toggle blendshapes.
+· f cycle features · p toggle points · b blendshapes · h head pose · e blink.
 """
 
 from __future__ import annotations
@@ -28,14 +29,22 @@ from pathlib import Path
 import cv2
 
 from src import (
+    BlinkCounter,
     FaceMeshDetector,
     FPSMeter,
+    MetricsExporter,
+    average_ear,
     draw_blendshapes_overlay,
     draw_face_landmarks,
+    draw_head_pose_axes,
+    draw_metrics_panel,
     ensure_model,
+    head_pose_axes_2d,
+    head_pose_from_matrix,
     resolve_source,
 )
 from src.drawing import FEATURE_GROUPS
+from src.metrics import NOSE_TIP
 
 # Order in which the 'f' key cycles through feature presets.
 _FEATURE_CYCLE = ["all", "tesselation", "contours", "irises"]
@@ -58,23 +67,68 @@ def parse_args(argv=None) -> argparse.Namespace:
                    help="Also plot a dot at every landmark.")
     p.add_argument("--blendshapes", action="store_true",
                    help="Show top expression blendshapes as an overlay.")
+    p.add_argument("--head-pose", action="store_true",
+                   help="Estimate head pose (pitch/yaw/roll) and draw axes.")
+    p.add_argument("--blink", action="store_true",
+                   help="Compute Eye Aspect Ratio and count blinks.")
+    p.add_argument("--ear-threshold", type=float, default=0.21,
+                   help="EAR below this counts as a closed eye (blink).")
     p.add_argument("--det-conf", type=float, default=0.5,
                    help="Minimum face detection confidence.")
     p.add_argument("--track-conf", type=float, default=0.5,
                    help="Minimum tracking confidence (video).")
     p.add_argument("--output", default=None,
                    help="Write annotated result to this path (image or video).")
+    p.add_argument("--export", default=None,
+                   help="Write per-frame metrics to this .jsonl file.")
+    p.add_argument("--export-landmarks", action="store_true",
+                   help="Include the 478 landmarks per face in the export.")
     p.add_argument("--no-display", action="store_true",
                    help="Process without opening a window (implies --output for streams).")
     return p.parse_args(argv)
 
 
-def _annotate(frame, result, features, *, points, show_blendshapes) -> None:
-    """Draw all detected faces (and optional blendshapes) onto a frame."""
-    for face in result.face_landmarks:
-        draw_face_landmarks(frame, face, features, draw_points=points)
-    if show_blendshapes and result.face_blendshapes:
-        draw_blendshapes_overlay(frame, result.face_blendshapes[0])
+def _annotate_face(frame, face, features, *, points) -> None:
+    draw_face_landmarks(frame, face, features, draw_points=points)
+
+
+def _face_metrics(frame, result, idx, *, do_blink, do_head_pose,
+                  ear_threshold, export_landmarks, blink_counters):
+    """Compute + draw metrics for one face; return (panel_lines, record)."""
+    h, w = frame.shape[:2]
+    face = result.face_landmarks[idx]
+    lines: list[str] = []
+    record: dict = {}
+
+    if do_blink:
+        ear = average_ear(face, w, h)
+        counter = blink_counters.setdefault(idx, BlinkCounter(ear_threshold))
+        blinks = counter.update(ear)
+        record["ear"] = round(ear, 4)
+        record["blink_count"] = blinks
+        if idx == 0:  # only the primary face writes to the on-screen panel
+            state = "closed" if counter.is_closed else "open"
+            lines.append(f"EAR  {ear:4.2f} ({state})")
+            lines.append(f"Blinks  {blinks}")
+
+    if do_head_pose and result.facial_transformation_matrixes:
+        matrix = result.facial_transformation_matrixes[idx]
+        pitch, yaw, roll = head_pose_from_matrix(matrix)
+        nose = face[NOSE_TIP]
+        origin = (nose.x * w, nose.y * h)
+        draw_head_pose_axes(frame, origin, head_pose_axes_2d(matrix))
+        record["head_pose"] = {
+            "pitch": round(pitch, 1), "yaw": round(yaw, 1), "roll": round(roll, 1),
+        }
+        if idx == 0:
+            lines.append(f"Pitch {pitch:+5.1f}")
+            lines.append(f"Yaw   {yaw:+5.1f}")
+            lines.append(f"Roll  {roll:+5.1f}")
+
+    if export_landmarks:
+        record["landmarks"] = MetricsExporter.landmarks_to_list(face)
+
+    return lines, record
 
 
 def _hud(frame, text: str) -> None:
@@ -94,13 +148,37 @@ def run_image(args, model_path: Path) -> int:
         model_path, running_mode="image", num_faces=args.num_faces,
         min_face_detection_confidence=args.det_conf,
         output_blendshapes=args.blendshapes,
+        output_transformation_matrixes=args.head_pose,
     ) as det:
         result = det.detect(img)
 
     features = FEATURE_GROUPS[args.features]
-    _annotate(img, result, features, points=args.points, show_blendshapes=args.blendshapes)
-    n = len(result.face_landmarks)
-    print(f"Detected {n} face(s).")
+    blink_counters: dict[int, BlinkCounter] = {}
+    panel_lines: list[str] = []
+    records: list[dict] = []
+    for idx, face in enumerate(result.face_landmarks):
+        _annotate_face(img, face, features, points=args.points)
+        lines, rec = _face_metrics(
+            img, result, idx,
+            do_blink=args.blink, do_head_pose=args.head_pose,
+            ear_threshold=args.ear_threshold,
+            export_landmarks=bool(args.export and args.export_landmarks),
+            blink_counters=blink_counters,
+        )
+        if idx == 0:
+            panel_lines = lines
+        records.append(rec)
+
+    if args.blendshapes and result.face_blendshapes:
+        draw_blendshapes_overlay(img, result.face_blendshapes[0])
+    if panel_lines:
+        draw_metrics_panel(img, panel_lines)
+
+    print(f"Detected {len(result.face_landmarks)} face(s).")
+    if args.export:
+        with MetricsExporter(args.export, args.export_landmarks) as exp:
+            exp.write_frame(0, records)
+        print(f"Exported metrics -> {args.export}")
 
     out = args.output or str(Path(args.source).with_name(Path(args.source).stem + "_mesh.jpg"))
     cv2.imwrite(out, img)
@@ -130,11 +208,15 @@ def run_stream(args, model_path: Path, kind: str, value) -> int:
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         writer = cv2.VideoWriter(args.output, fourcc, src_fps or 25.0, (w, h))
 
+    exporter = MetricsExporter(args.export, args.export_landmarks) if args.export else None
+
     display = not args.no_display
     features = list(FEATURE_GROUPS[args.features])
     feature_idx = _FEATURE_CYCLE.index(args.features) if args.features in _FEATURE_CYCLE else 0
     mesh_on, points_on, blend_on = True, args.points, args.blendshapes
+    pose_on, blink_on = args.head_pose, args.blink
     fps = FPSMeter()
+    blink_counters: dict[int, BlinkCounter] = {}
     frame_idx = 0
     snapshots = 0
     start = time.monotonic()
@@ -144,25 +226,46 @@ def run_stream(args, model_path: Path, kind: str, value) -> int:
         min_face_detection_confidence=args.det_conf,
         min_tracking_confidence=args.track_conf,
         output_blendshapes=args.blendshapes,
+        output_transformation_matrixes=args.head_pose,
     ) as det:
         while True:
             ok, frame = cap.read()
             if not ok:
                 break
 
-            # Webcams feel more natural mirrored; files are left as-is.
             if kind == "webcam":
-                frame = cv2.flip(frame, 1)
+                frame = cv2.flip(frame, 1)  # mirror feels natural
 
-            # Timestamp: frame-derived for files, wall-clock for webcam.
             if kind == "video" and src_fps > 0:
                 ts_ms = int(frame_idx / src_fps * 1000)
             else:
                 ts_ms = int((time.monotonic() - start) * 1000)
 
             result = det.detect(frame, timestamp_ms=ts_ms)
-            if mesh_on:
-                _annotate(frame, result, features, points=points_on, show_blendshapes=blend_on)
+
+            panel_lines: list[str] = []
+            records: list[dict] = []
+            for idx, face in enumerate(result.face_landmarks):
+                if mesh_on:
+                    _annotate_face(frame, face, features, points=points_on)
+                lines, rec = _face_metrics(
+                    frame, result, idx,
+                    do_blink=blink_on, do_head_pose=pose_on,
+                    ear_threshold=args.ear_threshold,
+                    export_landmarks=bool(args.export and args.export_landmarks),
+                    blink_counters=blink_counters,
+                )
+                if idx == 0:
+                    panel_lines = lines
+                records.append(rec)
+
+            if blend_on and result.face_blendshapes:
+                draw_blendshapes_overlay(frame, result.face_blendshapes[0])
+            if panel_lines:
+                draw_metrics_panel(frame, panel_lines)
+
+            if exporter is not None:
+                exporter.write_frame(frame_idx, records)
 
             current_fps = fps.tick()
             _hud(frame, f"{current_fps:4.1f} FPS | faces:{len(result.face_landmarks)} "
@@ -175,7 +278,7 @@ def run_stream(args, model_path: Path, kind: str, value) -> int:
                 try:
                     cv2.imshow("Face Mesh", frame)
                 except cv2.error:
-                    display = False  # headless; keep processing/writing
+                    display = False
                 else:
                     key = cv2.waitKey(1) & 0xFF
                     if key in (ord("q"), 27):
@@ -186,6 +289,10 @@ def run_stream(args, model_path: Path, kind: str, value) -> int:
                         points_on = not points_on
                     elif key == ord("b"):
                         blend_on = not blend_on
+                    elif key == ord("h"):
+                        pose_on = not pose_on
+                    elif key == ord("e"):
+                        blink_on = not blink_on
                     elif key == ord("f"):
                         feature_idx = (feature_idx + 1) % len(_FEATURE_CYCLE)
                         features = list(FEATURE_GROUPS[_FEATURE_CYCLE[feature_idx]])
@@ -201,12 +308,16 @@ def run_stream(args, model_path: Path, kind: str, value) -> int:
     if writer is not None:
         writer.release()
         print(f"Saved -> {args.output} ({frame_idx} frames)")
+    if exporter is not None:
+        exporter.close()
+        print(f"Exported metrics -> {args.export} ({frame_idx} frames)")
     cv2.destroyAllWindows()
     return 0
 
 
 def main(argv=None) -> int:
     args = parse_args(argv)
+    # Head pose requires the transformation matrix output; warn if missing.
     model_path = ensure_model(args.model) if args.model else ensure_model()
 
     kind, value = resolve_source(args.source)
