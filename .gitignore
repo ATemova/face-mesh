@@ -1,0 +1,21 @@
+# Model bundle (downloaded on first run)
+models/
+*.task
+
+# Generated output
+*_mesh.jpg
+*_mesh.png
+*_mesh.mp4
+snapshot_*.jpg
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.env
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
