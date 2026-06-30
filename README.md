@@ -1,3 +1,16 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12-blue?style=flat-square&logo=python" />
+  <img src="https://img.shields.io/badge/Computer%20Vision-MediaPipe-purple?style=flat-square" />
+  <img src="https://img.shields.io/badge/Framework-OpenCV-darkgreen?style=flat-square&logo=opencv" />
+  <img src="https://img.shields.io/badge/Tracking-478%20Facial%20Landmarks-informational?style=flat-square" />
+  <img src="https://img.shields.io/badge/Head%20Pose-Estimation-orange?style=flat-square" />
+  <img src="https://img.shields.io/badge/Gaze-Iris%20Tracking-blueviolet?style=flat-square" />
+  <img src="https://img.shields.io/badge/Blink-EAR%20Detection-red?style=flat-square" />
+  <img src="https://img.shields.io/badge/Export-CSV%20%7C%20JSONL-lightgrey?style=flat-square" />
+  <img src="https://img.shields.io/badge/Visualization-Real--Time-success?style=flat-square" />
+  <img src="https://img.shields.io/badge/Status-v0.3.0-brightgreen?style=flat-square" />
+</p>
+
 # Face Mesh
 
 Real-time facial landmark detection and mesh overlay in Python, built on
