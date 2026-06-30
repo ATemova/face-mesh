@@ -149,6 +149,27 @@ def draw_head_pose_axes(image, origin_xy, axis_offsets, *, thickness: int = 2) -
     cv2.circle(image, (ox, oy), 3, (255, 255, 255), -1, cv2.LINE_AA)
 
 
+def draw_gaze(image, landmarks, gaze, *, length: int = 40) -> None:
+    """Mark iris centers and draw a short gaze-direction arrow per eye.
+
+    Args:
+        image: BGR frame (modified in place).
+        landmarks: one face's normalized landmarks (needs the iris points).
+        gaze: dict from :func:`metrics.gaze_direction` with ``h``/``v``.
+    """
+    from .metrics import LEFT_IRIS, RIGHT_IRIS  # local import avoids a cycle
+
+    h, w = image.shape[:2]
+    dx = int((gaze["h"] - 0.5) * 2 * length)
+    dy = int((gaze["v"] - 0.5) * 2 * length)
+    for ring in (LEFT_IRIS, RIGHT_IRIS):
+        cx = int(sum(landmarks[i].x for i in ring) / len(ring) * w)
+        cy = int(sum(landmarks[i].y for i in ring) / len(ring) * h)
+        cv2.circle(image, (cx, cy), 3, (255, 230, 0), -1, cv2.LINE_AA)
+        cv2.arrowedLine(image, (cx, cy), (cx + dx, cy + dy),
+                        (255, 230, 0), 2, cv2.LINE_AA, tipLength=0.35)
+
+
 def draw_metrics_panel(image, lines, *, anchor: str = "br") -> None:
     """Render a small translucent text panel of metric lines.
 

@@ -5,8 +5,8 @@ Real-time facial landmark detection and mesh overlay in Python, built on
 face — including refined iris points — and renders the tesselation, feature
 contours, and irises live from a webcam, an image, or a video file.
 
-This is **v0.2.0** — adds head-pose estimation, blink detection, and per-frame export
-on top of the v0.1 mesh foundation.
+This is **v0.3.0** — adds a low-latency live-stream mode, gaze estimation,
+per-eye blink counts with blink-rate, head-pose smoothing, and CSV export.
 
 ![mesh demo](render_demo.png)
 
@@ -17,13 +17,14 @@ on top of the v0.1 mesh foundation.
 ## Features
 
 - 478-point face mesh (tesselation, contours, irises) with selectable feature sets
-- Three input modes: **webcam**, **single image**, **video file** (or stream URL)
+- Three running modes: **image**, **video**, and low-latency **live-stream** *(new)*
 - Multi-face tracking (`--num-faces`)
-- **Head-pose estimation** — pitch / yaw / roll plus a 3D orientation gizmo *(new)*
-- **Blink detection** — Eye Aspect Ratio with a debounced blink counter *(new)*
-- **Per-frame export** to JSONL (metrics, optionally full landmarks) *(new)*
-- Optional **expression blendshapes** overlay (52 scores; top ones shown as bars)
-- Live FPS meter and an interactive window (toggle mesh, cycle features, snapshot)
+- **Head-pose estimation** — pitch / yaw / roll, 3D gizmo, optional 1-Euro smoothing *(smoothing new)*
+- **Blink detection** — per-eye counts plus a rolling blinks-per-minute rate *(per-eye + rate new)*
+- **Gaze estimation** — direction from iris position relative to the eye *(new)*
+- **Per-frame export** to JSONL **or CSV** (metrics, optionally full landmarks) *(CSV new)*
+- Optional **expression blendshapes** overlay
+- Live FPS meter and an interactive window
 - Automatic one-time model download with local caching
 - Small, documented, dependency-light codebase
 
@@ -63,8 +64,11 @@ python main.py --features contours
 # Head-pose gizmo + blink counter live
 python main.py --head-pose --blink
 
-# Export per-frame metrics from a video to JSONL (add --export-landmarks for the points)
-python main.py --source clip.mp4 --head-pose --blink --export metrics.jsonl
+# Everything on, low-latency live-stream mode, smoothed head pose
+python main.py --live --head-pose --blink --gaze --smooth
+
+# Export per-frame metrics from a video to CSV (or .jsonl); add --export-landmarks for points
+python main.py --source clip.mp4 --head-pose --blink --gaze --export metrics.csv
 ```
 
 No webcam handy? Verify your install renders correctly with:
@@ -84,6 +88,7 @@ python scripts/render_demo.py   # writes render_demo.png
 | `b` | Toggle the blendshapes overlay  |
 | `h` | Toggle the head-pose gizmo (needs `--head-pose` at launch) |
 | `e` | Toggle blink/EAR metrics        |
+| `g` | Toggle gaze estimation          |
 | `s` | Save a snapshot (`snapshot_NNN.jpg`) |
 
 ## Command-line options
@@ -94,15 +99,18 @@ python scripts/render_demo.py   # writes render_demo.png
 | `--model` | auto | Path to `face_landmarker.task` (downloaded if omitted) |
 | `--features` | `all` | `tesselation` · `contours` · `irises` · `all` |
 | `--num-faces` | `1` | Max faces to track |
+| `--live` | off | Low-latency LIVE_STREAM mode (webcam only) |
 | `--points` | off | Plot a dot at every landmark |
 | `--blendshapes` | off | Show top expression blendshapes |
 | `--head-pose` | off | Estimate pitch/yaw/roll and draw a 3D gizmo |
-| `--blink` | off | Compute EAR and count blinks |
+| `--smooth` | off | 1-Euro filter on head-pose angles |
+| `--blink` | off | Per-eye EAR, blink counts and rate |
+| `--gaze` | off | Estimate gaze direction from the irises |
 | `--ear-threshold` | `0.21` | EAR below this counts as a closed eye |
 | `--det-conf` | `0.5` | Min face-detection confidence |
-| `--track-conf` | `0.5` | Min tracking confidence (video) |
+| `--track-conf` | `0.5` | Min tracking confidence (video/live) |
 | `--output` | — | Write annotated result to this path |
-| `--export` | — | Write per-frame metrics to a `.jsonl` file |
+| `--export` | — | Per-frame metrics to `.jsonl` or `.csv` (by extension) |
 | `--export-landmarks` | off | Include the 478 landmarks per face in the export |
 | `--no-display` | off | Process without opening a window |
 
@@ -115,10 +123,11 @@ face-mesh/
 ├── scripts/
 │   └── render_demo.py      # no-camera render self-test
 └── src/
-    ├── detector.py         # FaceMeshDetector — MediaPipe Tasks wrapper
-    ├── drawing.py          # mesh / gizmo / panel rendering + styles
-    ├── metrics.py          # EAR + blink counter, head-pose decomposition
-    ├── export.py           # per-frame JSONL writer
+    ├── detector.py         # FaceMeshDetector — image / video / live-stream
+    ├── drawing.py          # mesh / gizmo / gaze / panel rendering + styles
+    ├── metrics.py          # EAR + blink tracker, gaze, head-pose decomposition
+    ├── filters.py          # 1-Euro filter + pose smoother
+    ├── export.py           # per-frame JSONL / CSV writers
     ├── model.py            # model download & caching
     └── utils.py            # FPS meter, source resolution
 ```
@@ -157,15 +166,17 @@ video files run in **VIDEO** mode for temporal tracking; images run in
 
 ## Roadmap ideas
 
-Done in v0.2: head-pose (pitch/yaw/roll + gizmo), blink/EAR metrics, JSONL export.
+Done in v0.2: head-pose (pitch/yaw/roll + gizmo), blink/EAR, JSONL export.
+Done in v0.3: live-stream mode, gaze direction, per-eye blink + rate, 1-Euro
+head-pose smoothing, CSV export.
 
 Next up:
 
-- LIVE_STREAM async mode for lower-latency capture
-- Gaze direction from iris position relative to the eye
-- Per-eye blink counts and blink-rate (blinks/min) over time
-- Smoothing (one-euro filter) on head-pose angles to reduce jitter
-- CSV export option alongside JSONL
+- Calibration step for gaze (map raw ratios to screen coordinates)
+- Drowsiness heuristic (sustained low EAR / high blink rate alerts)
+- Multi-face metrics panel (not just the primary face)
+- Record/replay of exported sessions with a small viewer
+- Optional GPU delegate for the model
 
 ## License
 

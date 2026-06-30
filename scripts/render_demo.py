@@ -26,6 +26,7 @@ from src.drawing import (
     FEATURE_GROUPS,
     draw_blendshapes_overlay,
     draw_face_landmarks,
+    draw_gaze,
     draw_head_pose_axes,
     draw_metrics_panel,
 )
@@ -89,8 +90,8 @@ def main() -> int:
     p, y, r = head_pose_from_matrix(M)
     draw_head_pose_axes(canvas, (300, 300), head_pose_axes_2d(M, length=80))
     draw_metrics_panel(canvas, [
-        "EAR  0.29 (open)", "Blinks  3",
-        f"Pitch {p:+5.1f}", f"Yaw   {y:+5.1f}", f"Roll  {r:+5.1f}",
+        "EAR 0.29 (open)", "Blinks 7 (L7/R6)", "Rate 18/min",
+        "Gaze up-right", f"P{p:+.0f} Y{y:+.0f} R{r:+.0f}",
     ])
 
     out = Path(__file__).resolve().parent.parent / "render_demo.png"

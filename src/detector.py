@@ -2,12 +2,18 @@
 
 The legacy ``mp.solutions.face_mesh`` API was removed in recent MediaPipe
 releases (0.10.30+), so this project targets the current Tasks API. The
-wrapper hides the running-mode plumbing and guarantees monotonically
-increasing timestamps in VIDEO mode (a hard requirement of the API).
+wrapper hides the running-mode plumbing:
+
+- ``image``       — single-shot ``detect``.
+- ``video``       — ``detect_for_video`` with monotonic timestamps (tracking).
+- ``live_stream`` — non-blocking ``detect_async``; results arrive on a
+  callback thread and the most recent one is returned immediately, so the
+  capture loop never stalls on inference (lower latency).
 """
 
 from __future__ import annotations
 
+import threading
 import time
 from pathlib import Path
 
@@ -24,7 +30,10 @@ from mediapipe.tasks.python.vision import (
 _RUNNING_MODES = {
     "image": RunningMode.IMAGE,
     "video": RunningMode.VIDEO,
+    "live_stream": RunningMode.LIVE_STREAM,
 }
+
+_EMPTY_RESULT = FaceLandmarkerResult([], [], [])
 
 
 class FaceMeshDetector:
@@ -32,8 +41,7 @@ class FaceMeshDetector:
 
     Args:
         model_path: Path to a ``face_landmarker.task`` bundle.
-        running_mode: ``"image"`` for single shots, ``"video"`` for streams
-            (webcam / video files). VIDEO mode enables temporal tracking.
+        running_mode: ``"image"``, ``"video"`` or ``"live_stream"``.
         num_faces: Maximum number of faces to track.
         min_face_detection_confidence: Detection threshold in ``[0, 1]``.
         min_face_presence_confidence: Presence threshold in ``[0, 1]``.
@@ -60,7 +68,11 @@ class FaceMeshDetector:
         self.running_mode = running_mode
         self._last_ts_ms = -1
 
-        options = FaceLandmarkerOptions(
+        # Live-stream results arrive asynchronously; guard the latest one.
+        self._lock = threading.Lock()
+        self._latest: FaceLandmarkerResult = _EMPTY_RESULT
+
+        kwargs = dict(
             base_options=BaseOptions(model_asset_path=str(model_path)),
             running_mode=_RUNNING_MODES[running_mode],
             num_faces=num_faces,
@@ -70,19 +82,24 @@ class FaceMeshDetector:
             output_face_blendshapes=output_blendshapes,
             output_facial_transformation_matrixes=output_transformation_matrixes,
         )
+        if running_mode == "live_stream":
+            kwargs["result_callback"] = self._on_result
+
+        options = FaceLandmarkerOptions(**kwargs)
         self._landmarker = FaceLandmarker.create_from_options(options)
+
+    def _on_result(self, result, output_image, timestamp_ms: int) -> None:
+        """Callback invoked by MediaPipe on its own thread (live stream)."""
+        with self._lock:
+            self._latest = result
 
     def detect(self, frame_bgr, timestamp_ms: int | None = None) -> FaceLandmarkerResult:
         """Run detection on a single BGR frame (OpenCV's native format).
 
-        Args:
-            frame_bgr: ``H x W x 3`` uint8 array in BGR channel order.
-            timestamp_ms: Frame timestamp for VIDEO mode. If omitted, a
-                monotonic wall-clock value is used. Ignored in IMAGE mode.
-
-        Returns:
-            A :class:`FaceLandmarkerResult` with ``face_landmarks`` and,
-            if enabled, ``face_blendshapes`` / transformation matrices.
+        In ``image``/``video`` mode this returns the result for *this* frame.
+        In ``live_stream`` mode it submits the frame and returns the most
+        recent result available (which may lag by a frame or two) without
+        blocking on inference.
         """
         rgb = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
@@ -90,13 +107,20 @@ class FaceMeshDetector:
         if self.running_mode == "image":
             return self._landmarker.detect(mp_image)
 
-        # VIDEO mode requires strictly increasing timestamps.
+        # VIDEO / LIVE_STREAM both require strictly increasing timestamps.
         if timestamp_ms is None:
             timestamp_ms = int(time.monotonic() * 1000)
         if timestamp_ms <= self._last_ts_ms:
             timestamp_ms = self._last_ts_ms + 1
         self._last_ts_ms = timestamp_ms
-        return self._landmarker.detect_for_video(mp_image, timestamp_ms)
+
+        if self.running_mode == "video":
+            return self._landmarker.detect_for_video(mp_image, timestamp_ms)
+
+        # live_stream: fire and forget, return whatever the callback last stored.
+        self._landmarker.detect_async(mp_image, timestamp_ms)
+        with self._lock:
+            return self._latest
 
     def close(self) -> None:
         """Release the underlying MediaPipe graph."""
