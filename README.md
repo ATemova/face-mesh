@@ -1,3 +1,18 @@
+<p align="center">
+  <img src="https://img.shields.io/badge/Python-3.12-blue?style=flat-square&logo=python" />
+  <img src="https://img.shields.io/badge/Computer%20Vision-MediaPipe-purple?style=flat-square" />
+  <img src="https://img.shields.io/badge/Framework-OpenCV-darkgreen?style=flat-square&logo=opencv" />
+  <img src="https://img.shields.io/badge/Tracking-478%20Facial%20Landmarks-informational?style=flat-square" />
+  <img src="https://img.shields.io/badge/Head%20Pose-Pitch%20%7C%20Yaw%20%7C%20Roll-orange?style=flat-square" />
+  <img src="https://img.shields.io/badge/Gaze-Screen%20Calibration-blueviolet?style=flat-square" />
+  <img src="https://img.shields.io/badge/Drowsiness-PERCLOS%20Detection-red?style=flat-square" />
+  <img src="https://img.shields.io/badge/Multi--Face-Supported-009688?style=flat-square" />
+  <img src="https://img.shields.io/badge/Acceleration-GPU%20Delegate-success?style=flat-square" />
+  <img src="https://img.shields.io/badge/Export-CSV%20%7C%20JSONL-lightgrey?style=flat-square" />
+  <img src="https://img.shields.io/badge/Replay-Offline%20Viewer-795548?style=flat-square" />
+  <img src="https://img.shields.io/badge/Status-v0.4.0-brightgreen?style=flat-square" />
+</p>
+
 # Face Mesh
 
 Real-time facial landmark detection and mesh overlay in Python, built on
