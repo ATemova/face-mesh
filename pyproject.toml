@@ -1,0 +1,40 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "face-mesh"
+version = "1.0.0"
+description = "Real-time face mesh with head pose, blink/gaze, drowsiness, multi-face tracking and export (MediaPipe + OpenCV)."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Anastasija Temova" }]
+keywords = ["mediapipe", "opencv", "face-mesh", "head-pose", "gaze", "drowsiness", "computer-vision"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Scientific/Engineering :: Image Recognition",
+]
+dependencies = [
+    "mediapipe>=0.10.30",
+    "opencv-python>=4.8",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+plot = ["matplotlib>=3.7"]
+dev = ["pytest>=7", "matplotlib>=3.7"]
+
+[project.scripts]
+facemesh = "facemesh.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/ATemova/face-mesh"
+Repository = "https://github.com/ATemova/face-mesh"
+
+[tool.setuptools]
+packages = ["facemesh"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

@@ -10,6 +10,7 @@ export, and an offline replay viewer.
 
 from .calibration import GazeCalibrator, grid_targets
 from .detector import FaceMeshDetector
+from .recognition import FaceTracker
 from .drawing import (
     FEATURE_SETS,
     draw_blendshapes_overlay,
@@ -47,6 +48,7 @@ from .utils import FPSMeter, resolve_source
 
 __all__ = [
     "FaceMeshDetector",
+    "FaceTracker",
     "GazeCalibrator",
     "grid_targets",
     "DrowsinessMonitor",
@@ -82,4 +84,4 @@ __all__ = [
     "resolve_source",
 ]
 
-__version__ = "0.4.0"
+__version__ = "1.0.0"

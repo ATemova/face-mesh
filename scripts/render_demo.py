@@ -22,7 +22,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.drawing import (
+from facemesh.drawing import (
     FEATURE_GROUPS,
     draw_blendshapes_overlay,
     draw_drowsiness_banner,
@@ -31,7 +31,7 @@ from src.drawing import (
     draw_gaze_cursor,
     draw_head_pose_axes,
 )
-from src.metrics import head_pose_axes_2d, head_pose_from_matrix
+from facemesh.metrics import head_pose_axes_2d, head_pose_from_matrix
 
 
 @dataclass

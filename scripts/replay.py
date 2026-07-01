@@ -23,7 +23,7 @@ import cv2
 import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from src.drawing import FEATURE_GROUPS, draw_face_landmarks, draw_face_panels
+from facemesh.drawing import FEATURE_GROUPS, draw_face_landmarks, draw_face_panels
 
 
 @dataclass
