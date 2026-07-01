@@ -33,7 +33,26 @@ _RUNNING_MODES = {
     "live_stream": RunningMode.LIVE_STREAM,
 }
 
+_DELEGATES = {
+    "cpu": BaseOptions.Delegate.CPU,
+    "gpu": BaseOptions.Delegate.GPU,
+}
+
 _EMPTY_RESULT = FaceLandmarkerResult([], [], [])
+
+
+def _make_landmarker(kwargs: dict) -> FaceLandmarker:
+    """Build the landmarker, falling back to CPU if a GPU delegate fails."""
+    try:
+        return FaceLandmarker.create_from_options(FaceLandmarkerOptions(**kwargs))
+    except Exception:
+        base = kwargs.get("base_options")
+        if base is not None and base.delegate == BaseOptions.Delegate.GPU:
+            import sys
+            print("note: GPU delegate unavailable; falling back to CPU.", file=sys.stderr)
+            base.delegate = BaseOptions.Delegate.CPU
+            return FaceLandmarker.create_from_options(FaceLandmarkerOptions(**kwargs))
+        raise
 
 
 class FaceMeshDetector:
@@ -60,11 +79,14 @@ class FaceMeshDetector:
         min_tracking_confidence: float = 0.5,
         output_blendshapes: bool = False,
         output_transformation_matrixes: bool = False,
+        delegate: str = "cpu",
     ) -> None:
         if running_mode not in _RUNNING_MODES:
             raise ValueError(
                 f"running_mode must be one of {list(_RUNNING_MODES)}, got {running_mode!r}"
             )
+        if delegate not in _DELEGATES:
+            raise ValueError(f"delegate must be 'cpu' or 'gpu', got {delegate!r}")
         self.running_mode = running_mode
         self._last_ts_ms = -1
 
@@ -73,7 +95,9 @@ class FaceMeshDetector:
         self._latest: FaceLandmarkerResult = _EMPTY_RESULT
 
         kwargs = dict(
-            base_options=BaseOptions(model_asset_path=str(model_path)),
+            base_options=BaseOptions(
+                model_asset_path=str(model_path), delegate=_DELEGATES[delegate]
+            ),
             running_mode=_RUNNING_MODES[running_mode],
             num_faces=num_faces,
             min_face_detection_confidence=min_face_detection_confidence,
@@ -85,8 +109,7 @@ class FaceMeshDetector:
         if running_mode == "live_stream":
             kwargs["result_callback"] = self._on_result
 
-        options = FaceLandmarkerOptions(**kwargs)
-        self._landmarker = FaceLandmarker.create_from_options(options)
+        self._landmarker = _make_landmarker(kwargs)
 
     def _on_result(self, result, output_image, timestamp_ms: int) -> None:
         """Callback invoked by MediaPipe on its own thread (live stream)."""

@@ -22,6 +22,10 @@ EYE_LANDMARKS_RIGHT = (33, 160, 158, 133, 153, 144)
 # Nose tip — a stable anchor for the head-pose gizmo.
 NOSE_TIP = 1
 
+# Mouth landmarks for the Mouth Aspect Ratio (yawn detection).
+MOUTH_VERTICAL = (13, 14)     # upper-inner lip, lower-inner lip
+MOUTH_HORIZONTAL = (61, 291)  # left corner, right corner
+
 # Iris landmarks (require the 478-point refined model). Centers + rings.
 LEFT_IRIS = (474, 475, 476, 477)
 RIGHT_IRIS = (469, 470, 471, 472)
@@ -53,6 +57,19 @@ def average_ear(landmarks, width: int, height: int) -> float:
     left = eye_aspect_ratio(landmarks, EYE_LANDMARKS_LEFT, width, height)
     right = eye_aspect_ratio(landmarks, EYE_LANDMARKS_RIGHT, width, height)
     return (left + right) / 2.0
+
+
+def mouth_aspect_ratio(landmarks, width: int, height: int) -> float:
+    """Mouth Aspect Ratio = vertical opening / horizontal width.
+
+    Rises sharply during a yawn; a relaxed closed mouth sits near ~0.05-0.2.
+    """
+    top = _px(landmarks[MOUTH_VERTICAL[0]], width, height)
+    bottom = _px(landmarks[MOUTH_VERTICAL[1]], width, height)
+    left = _px(landmarks[MOUTH_HORIZONTAL[0]], width, height)
+    right = _px(landmarks[MOUTH_HORIZONTAL[1]], width, height)
+    horizontal = np.linalg.norm(left - right)
+    return float(np.linalg.norm(top - bottom) / horizontal) if horizontal > 0 else 0.0
 
 
 def _iris_center(landmarks, ring) -> tuple[float, float]:

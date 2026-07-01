@@ -25,10 +25,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.drawing import (
     FEATURE_GROUPS,
     draw_blendshapes_overlay,
+    draw_drowsiness_banner,
     draw_face_landmarks,
-    draw_gaze,
+    draw_face_panels,
+    draw_gaze_cursor,
     draw_head_pose_axes,
-    draw_metrics_panel,
 )
 from src.metrics import head_pose_axes_2d, head_pose_from_matrix
 
@@ -89,10 +90,16 @@ def main() -> int:
     M[:3, :3] = Ry @ Rx
     p, y, r = head_pose_from_matrix(M)
     draw_head_pose_axes(canvas, (300, 300), head_pose_axes_2d(M, length=80))
-    draw_metrics_panel(canvas, [
-        "EAR 0.29 (open)", "Blinks 7 (L7/R6)", "Rate 18/min",
-        "Gaze up-right", f"P{p:+.0f} Y{y:+.0f} R{r:+.0f}",
+
+    # v0.4: multi-face panels, drowsiness banner, calibrated gaze cursor.
+    draw_face_panels(canvas, [
+        ("Face 0", ["EAR 0.29 (open)", "Blinks 7 (L7/R6)", "Rate 18/min",
+                    "Gaze up-right", f"P{p:+.0f} Y{y:+.0f} R{r:+.0f}",
+                    "PERCLOS 22% [drowsy]"]),
+        ("Face 1", ["EAR 0.31 (open)", "Blinks 4 (L4/R4)", "PERCLOS 5% [awake]"]),
     ])
+    draw_drowsiness_banner(canvas, "drowsy")
+    draw_gaze_cursor(canvas, (360, 250))
 
     out = Path(__file__).resolve().parent.parent / "render_demo.png"
     cv2.imwrite(str(out), canvas)

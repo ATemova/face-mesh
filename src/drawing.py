@@ -195,3 +195,64 @@ def draw_metrics_panel(image, lines, *, anchor: str = "br") -> None:
         y = y1 + pad + i * line_h + 13
         cv2.putText(image, text, (x1 + pad, y), cv2.FONT_HERSHEY_SIMPLEX,
                     0.45, (60, 255, 120), 1, cv2.LINE_AA)
+
+
+def draw_face_panels(image, panels) -> None:
+    """Stack a compact metrics panel per face down the right edge.
+
+    Args:
+        image: BGR frame (modified in place).
+        panels: list of ``(title, lines)`` tuples, one per face.
+    """
+    h, w = image.shape[:2]
+    pad, line_h, panel_w = 6, 18, 200
+    y = 10
+    for title, lines in panels:
+        rows = [title, *lines]
+        panel_h = pad * 2 + line_h * len(rows)
+        if y + panel_h > h - 10:
+            break  # ran out of vertical room
+        x1 = w - panel_w - 10
+        overlay = image.copy()
+        cv2.rectangle(overlay, (x1, y), (x1 + panel_w, y + panel_h), (20, 20, 20), -1)
+        cv2.addWeighted(overlay, 0.55, image, 0.45, 0, image)
+        for i, text in enumerate(rows):
+            color = (0, 200, 255) if i == 0 else (60, 255, 120)
+            ty = y + pad + i * line_h + 13
+            cv2.putText(image, text, (x1 + pad, ty), cv2.FONT_HERSHEY_SIMPLEX,
+                        0.42, color, 1, cv2.LINE_AA)
+        y += panel_h + 8
+
+
+def draw_drowsiness_banner(image, level: str) -> None:
+    """Top banner reflecting the drowsiness ``level`` (awake/drowsy/ALERT)."""
+    if level == "awake":
+        return
+    w = image.shape[1]
+    color = (0, 0, 220) if level == "ALERT" else (0, 170, 230)  # red / amber
+    text = "DROWSINESS ALERT" if level == "ALERT" else "drowsy"
+    overlay = image.copy()
+    cv2.rectangle(overlay, (0, 0), (w, 40), color, -1)
+    cv2.addWeighted(overlay, 0.75, image, 0.25, 0, image)
+    cv2.putText(image, text, (w // 2 - 110, 27), cv2.FONT_HERSHEY_SIMPLEX,
+                0.8, (255, 255, 255), 2, cv2.LINE_AA)
+
+
+def draw_calibration_target(image, point, progress: float = 0.0) -> None:
+    """Draw a fixation target with a dwell-progress ring at ``point``."""
+    x, y = int(point[0]), int(point[1])
+    cv2.circle(image, (x, y), 16, (120, 120, 120), 2, cv2.LINE_AA)
+    cv2.circle(image, (x, y), 4, (60, 255, 120), -1, cv2.LINE_AA)
+    if progress > 0:
+        end = int(360 * min(max(progress, 0.0), 1.0))
+        cv2.ellipse(image, (x, y), (16, 16), -90, 0, end, (60, 255, 120), 3, cv2.LINE_AA)
+
+
+def draw_gaze_cursor(image, point) -> None:
+    """Draw a crosshair cursor at a calibrated on-screen gaze ``point``."""
+    h, w = image.shape[:2]
+    x = int(min(max(point[0], 0), w - 1))
+    y = int(min(max(point[1], 0), h - 1))
+    cv2.circle(image, (x, y), 12, (255, 230, 0), 2, cv2.LINE_AA)
+    cv2.line(image, (x - 18, y), (x + 18, y), (255, 230, 0), 1, cv2.LINE_AA)
+    cv2.line(image, (x, y - 18), (x, y + 18), (255, 230, 0), 1, cv2.LINE_AA)
